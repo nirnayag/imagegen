@@ -4,16 +4,18 @@ import './App.css';
 function App() {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState('');
-  const [prompt, setPrompt] = useState('ghibli style, whimsical scene');
+  const [prompt, setPrompt] = useState('');
   const [resultUrl, setResultUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [processing, setProcessing] = useState(false);
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
     setFile(selected);
     setResultUrl('');
     setError('');
+    setProcessing(false);
     if (selected) {
       const reader = new FileReader();
       reader.onloadend = () => setPreview(reader.result);
@@ -27,48 +29,43 @@ function App() {
     setPrompt(e.target.value);
     setResultUrl('');
     setError('');
+    setProcessing(false);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!file) return;
+    if (!file || !prompt) return;
     setLoading(true);
     setError('');
     setResultUrl('');
+    setProcessing(false);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Image = reader.result.split(',')[1];
-        const response = await fetch('https://api.getimg.ai/v1/flux-schnell/image-to-image', {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer key-4oukIz5zPvx7YCMEhnAq6QKIpUaWX0qRrBULhJro39ZdOhcmQwntRR8W6mfE1Qay2XfIzwp9GRDkebPnNy3sMUiOczqz8qc7',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            image: base64Image,
-            prompt: prompt
-          })
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setResultUrl(data.image_url || data.url || '');
-        } else {
-          setError('Failed to generate image.');
-        }
-        setLoading(false);
-      };
-      reader.readAsDataURL(file);
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('prompt', prompt);
+      const response = await fetch('http://localhost:5000/generate-image', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (response.status === 202 && data.status === 'processing') {
+        setProcessing(true);
+        setError('Image is still processing. Please try again in a few seconds.');
+      } else if (response.ok && data.image) {
+        setResultUrl(data.image);
+      } else {
+        setError(data.error || 'Failed to generate image.');
+      }
     } catch (err) {
       setError('Error generating image.');
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   return (
     <div className="App" style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%)', padding: 0, margin: 0 }}>
       <div style={{ maxWidth: 480, margin: '40px auto', background: '#fff', borderRadius: 16, boxShadow: '0 4px 24px #0001', padding: 32 }}>
-        <h1 style={{ textAlign: 'center', color: '#4f46e5', marginBottom: 24 }}>getimg.ai Image-to-Image</h1>
+        <h1 style={{ textAlign: 'center', color: '#4f46e5', marginBottom: 24 }}>AI Image Generator</h1>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <label style={{ fontWeight: 500, color: '#374151' }}>
             Upload Image
@@ -134,9 +131,11 @@ function App() {
             </div>
           </div>
         )}
-      </div>
-      <div style={{ textAlign: 'center', color: '#a5b4fc', marginTop: 32, fontSize: 14 }}>
-        Powered by <a href="https://getimg.ai/" style={{ color: '#6366f1', textDecoration: 'none', fontWeight: 500 }}>getimg.ai</a>
+        {processing && (
+          <div style={{ textAlign: 'center', marginTop: 32, color: '#6366f1', fontSize: 16 }}>
+            Image is processing. Please try again in a few seconds.
+          </div>
+        )}
       </div>
     </div>
   );
